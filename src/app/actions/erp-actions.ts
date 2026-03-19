@@ -22,11 +22,9 @@ const toFixedNum = (num: number, precision: number = 2) =>
 
 const toNumber = (val: any) => (Number.isFinite(+val) ? +val : 0);
 
-/**
- * --- ÜRÜN İŞLEMLERİ ---
- */
 export async function saveProduct(data: any) {
   try {
+    // 1. Payload hazırlığı (stock_count EKLENDİ)
     const payload = {
       sku: data.sku?.trim().toUpperCase(),
       oem_code: data.oem_code?.trim() || null,
@@ -39,23 +37,51 @@ export async function saveProduct(data: any) {
       image_url: data.image_url || null,
       critical_limit: Math.floor(toNumber(data.critical_limit) || 5),
       shelf_no: data.shelf_no?.toUpperCase() || null,
+      stock_count: toNumber(data.stock_count), // KRİTİK EKSİK BURASIYDI
       updated_at: new Date().toISOString(),
       is_deleted: false,
       is_active: true
     };
 
-    const { error } = data.id 
-      ? await supabase.from('products').update(payload).eq('id', data.id)
-      : await supabase.from('products').insert([payload]);
+    // 2. Önceki stok değerini al (Stock Movement için gerekli)
+    let prevStock = 0;
+    if (data.id) {
+      const { data: oldProd } = await supabase
+        .from('products')
+        .select('stock_count')
+        .eq('id', data.id)
+        .single();
+      prevStock = oldProd?.stock_count || 0;
+    }
+
+    // 3. Ürünü Kaydet/Güncelle
+    const { data: savedProduct, error } = data.id 
+      ? await supabase.from('products').update(payload).eq('id', data.id).select().single()
+      : await supabase.from('products').insert([payload]).select().single();
 
     if (error) throw error;
+
+    // 4. EĞER FARK VARSA: stock_movements tablosuna kayıt at
+    const adjustment = toNumber(data.adjustment_amount);
+    if (adjustment !== 0) {
+      const { error: moveError } = await supabase.from('stock_movements').insert({
+        product_id: savedProduct.id,
+        type: adjustment > 0 ? 'IN' : 'OUT',
+        quantity: Math.abs(adjustment),
+        prev_stock: prevStock,
+        next_stock: savedProduct.stock_count,
+        source_type: 'ADJUSTMENT', // Tablo kısıtına uygun
+        description: 'Manuel stok düzeltme yapıldı.'
+      });
+      if (moveError) console.error("Stok hareketi yazılamadı:", moveError.message);
+    }
+
     revalidatePath('/stok');
     return { success: true };
   } catch (error: any) {
     return { success: false, error: "Ürün hatası: " + error.message };
   }
 }
-
 /**
  * --- CARİ İŞLEMLERİ ---
  */

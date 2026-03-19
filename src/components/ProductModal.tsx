@@ -28,7 +28,8 @@ export function ProductModal({ trigger, editData }: { trigger: React.ReactNode; 
     stock_count: 0,
     critical_limit: 5,
     is_active: true,
-    image_url: '' // Yeni eklenen alan
+    adjustment_amount: 0,
+    image_url: '' // Yeni eklenen alan    
   };
 
   const [formData, setFormData] = useState(initialForm);
@@ -85,6 +86,7 @@ setFormData(prev => ({ ...prev, image_url: cacheBusterUrl }));
         tax_rate: Number(editData.tax_rate) || 20,
         stock_count: Number(editData.stock_count) || 0,
         critical_limit: Number(editData.critical_limit) || 5,
+        
         image_url: editData.image_url || ''
       });
     } else if (!isOpen) {
@@ -96,26 +98,32 @@ setFormData(prev => ({ ...prev, image_url: cacheBusterUrl }));
     ? (((formData.sell_price - formData.purchase_price) / formData.purchase_price) * 100).toFixed(0) 
     : 0;
 
-const handleSubmit = async (e: React.ChangeEvent<any>) => {
+const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => { // e tipini düzelttik
   e.preventDefault();
-  if (uploading) return alert("Görsel yüklenirken bekleyin...");
-  
   setLoading(true);
+  
   try {
-    // Tüm formData'yı gönderdiğimizden emin oluyoruz
+    // Mevcut stok ile farkı toplayıp yeni stok değerini hesaplıyoruz
+    const currentStock = Number(formData.stock_count) || 0;
+    const adjustment = Number(formData.adjustment_amount) || 0;
+    const finalStock = currentStock + adjustment;
+
     const result = await saveProduct({
-      ...formData, 
-      sku: formData.sku.toUpperCase().trim(),
-      // image_url zaten formData içinde olduğu için buraya otomatik dahil olur
+      ...formData,
+      stock_count: finalStock, // Veritabanına gidecek gerçek rakam
+      is_adjustment: adjustment !== 0 // Eğer fark 0 değilse hareket kaydı oluşturması için
     });
 
     if (result.success) {
+      // Başarılı olduktan sonra local state'i ve farkı sıfırlıyoruz
+      setFormData(prev => ({ ...prev, stock_count: finalStock, adjustment_amount: 0 }));
       setIsOpen(false);
       router.refresh();
     } else {
       alert(`Hata: ${result.error}`);
     }
   } catch (err) {
+    console.error(err);
     alert("Sistem hatası oluştu.");
   } finally {
     setLoading(false);
@@ -155,26 +163,72 @@ const handleSubmit = async (e: React.ChangeEvent<any>) => {
                   </div>
 
                   {/* Görsel Yükleme Alanı */}
-                  <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200 hover:border-blue-400 transition-all relative overflow-hidden">
-                    <div className="w-20 h-20 bg-white rounded-2xl flex-shrink-0 border border-slate-100 flex items-center justify-center overflow-hidden">
-                      {formData.image_url ? (
-                        <img src={formData.image_url} alt="Preview" className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-2xl">📸</span>
-                      )}
-                    </div>
-                    <div className="flex-grow">
-                      <label className="text-[9px] font-black text-slate-500 uppercase block mb-1">Fotoğraf Yükle</label>
-                      <input 
-                        type="file" 
-                        accept="image/*" 
-                        onChange={handleImageUpload}
-                        className="text-xs file:hidden cursor-pointer" 
-                      />
-                      {uploading && <p className="text-[8px] font-bold text-blue-600 animate-pulse mt-1">Sıkıştırılıyor...</p>}
-                    </div>
-                  </div>
+<div className="flex items-center gap-5 p-5 bg-slate-50 rounded-[28px] border-2 border-dashed border-slate-200 hover:border-blue-400 hover:bg-blue-50/30 transition-all relative group">
+  {/* Görsel Önizleme Alanı */}
+<div className="w-24 h-24 bg-white rounded-2xl flex-shrink-0 border border-slate-100 flex items-center justify-center overflow-hidden relative shadow-inner group/img-box">
+  {formData.image_url ? (
+    <>
+      <img 
+        src={formData.image_url} 
+        alt="Preview" 
+        className="w-full h-full object-cover" 
+      />
+      {/* Overlay: Sadece hover durumunda görünür */}
+      <div className="absolute inset-0 bg-red-600/80 opacity-0 group-hover/img-box:opacity-100 transition-opacity duration-200 flex flex-col items-center justify-center gap-1">
+        <button 
+          type="button"
+          onClick={() => setFormData(prev => ({ ...prev, image_url: '' }))}
+          className="text-white font-black text-[10px] uppercase tracking-widest hover:scale-110 transition-transform"
+        >
+          Görseli Kaldır
+        </button>
+      </div>
+    </>
+  ) : (
+    <div className="flex flex-col items-center gap-1 opacity-40">
+      <span className="text-3xl">📸</span>
+      <span className="text-[8px] font-black uppercase tracking-tighter">FOTO YOK</span>
+    </div>
+  )}
+</div>
 
+  {/* Yükleme Kontrolleri */}
+  <div className="flex-grow space-y-2">
+    <div>
+      <label className="text-[10px] font-black text-slate-500 uppercase block mb-1 tracking-widest italic">
+        {formData.image_url ? 'Görseli Değiştir' : 'Parça Fotoğrafı'}
+      </label>
+      <div className="relative">
+        {/* Gizli input'u tetikleyen şık bir buton */}
+        <button
+          type="button"
+          className="bg-white border border-slate-200 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-tight shadow-sm hover:bg-slate-900 hover:text-white transition-all"
+          onClick={() => document.getElementById('file-upload')?.click()}
+        >
+          {uploading ? 'İŞLENİYOR...' : formData.image_url ? 'YENİ SEÇ' : 'DOSYA SEÇ'}
+        </button>
+        <input 
+          id="file-upload"
+          type="file" 
+          accept="image/*" 
+          onChange={handleImageUpload}
+          className="hidden" 
+        />
+      </div>
+    </div>
+    
+    {uploading ? (
+      <div className="flex items-center gap-2">
+        <div className="w-2 h-2 bg-blue-600 rounded-full animate-ping" />
+        <p className="text-[9px] font-bold text-blue-600 uppercase italic">Görsel optimize ediliyor...</p>
+      </div>
+    ) : (
+      <p className="text-[9px] text-slate-400 font-medium italic">
+        Max 200KB • Auto WebP Dönüşümü
+      </p>
+    )}
+  </div>
+</div>
                   <div className="space-y-1.5">
                     <label className="text-[9px] font-black text-slate-500 uppercase ml-2">Ürün Adı / Açıklama</label>
                     <input 
@@ -229,76 +283,155 @@ const handleSubmit = async (e: React.ChangeEvent<any>) => {
                 </div>
 
                 {/* Sağ Bölüm: Finansal & Stok (Kodun devamı senin orijinal yapınla aynı) */}
-                <div className="space-y-5">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-[10px] font-bold uppercase text-slate-400 tracking-widest italic">Finans & Depo</span>
-                    <div className="h-px flex-grow bg-slate-100" />
-                  </div>
 
-                  <div className="grid grid-cols-2 gap-4 p-5 bg-blue-50/50 rounded-[32px] border border-blue-100 relative">
-                    <div className="absolute -top-3 right-6 bg-emerald-500 text-white text-[9px] font-black px-4 py-1 rounded-full shadow-lg">
-                      %{margin} MARJ
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[9px] font-black text-blue-600 uppercase ml-2">Alış Fiyatı</label>
-                      <input 
-                        type="number" step="0.01"
-                        className="w-full border-2 border-white p-3 rounded-xl font-black text-lg focus:border-blue-500 outline-none shadow-sm"
-                        value={formData.purchase_price}
-                        onChange={e => setFormData({...formData, purchase_price: Number(e.target.value)})}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[9px] font-black text-blue-600 uppercase ml-2">Satış Fiyatı</label>
-                      <input 
-                        type="number" step="0.01"
-                        className="w-full border-2 border-white p-3 rounded-xl font-black text-lg focus:border-blue-500 outline-none shadow-sm"
-                        value={formData.sell_price}
-                        onChange={e => setFormData({...formData, sell_price: Number(e.target.value)})}
-                      />
-                    </div>
-                  </div>
+<div className="space-y-5">
+  <div className="flex items-center gap-2 mb-2">
+    <span className="text-[10px] font-bold uppercase text-slate-400 tracking-widest italic">Finans & Depo</span>
+    <div className="h-px flex-grow bg-slate-100" />
+  </div>
 
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="space-y-1.5">
-                      <label className="text-[9px] font-black text-slate-500 uppercase ml-2">Stok</label>
-                      <input 
-                        type="number"
-                        className="w-full border-2 border-slate-100 p-4 rounded-2xl font-black text-center focus:border-blue-600 outline-none"
-                        value={formData.stock_count}
-                        onChange={e => setFormData({...formData, stock_count: Number(e.target.value)})}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[9px] font-black text-red-500 uppercase ml-2">Kritik</label>
-                      <input 
-                        type="number"
-                        className="w-full border-2 border-red-50 p-4 rounded-2xl font-black text-center text-red-600 focus:border-red-500 outline-none bg-red-50/30"
-                        value={formData.critical_limit}
-                        onChange={e => setFormData({...formData, critical_limit: Number(e.target.value)})}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[9px] font-black text-slate-500 uppercase ml-2">KDV %</label>
-                      <input 
-                        type="number"
-                        className="w-full border-2 border-slate-100 p-4 rounded-2xl font-black text-center focus:border-blue-600 outline-none"
-                        value={formData.tax_rate}
-                        onChange={e => setFormData({...formData, tax_rate: Number(e.target.value)})}
-                      />
-                    </div>
-                  </div>
+{/* STOK DÜZELTME KARTI */}
+<div className="space-y-4 p-6 bg-slate-900 rounded-[32px] text-white shadow-xl relative overflow-hidden group">
+  {/* Arka plan dekorasyonu */}
+  <div className="absolute -right-4 -top-4 text-white/5 text-6xl font-black italic select-none group-hover:scale-110 transition-transform">
+    STOCK
+  </div>
 
-                  <div className="space-y-1.5">
-                    <label className="text-[9px] font-black text-slate-500 uppercase ml-2">Raf / Konum</label>
-                    <input 
-                      className="w-full border-2 border-slate-100 p-4 rounded-2xl font-black tracking-widest uppercase focus:border-blue-600 outline-none bg-slate-50"
-                      value={formData.shelf_no || ''}
-                      onChange={e => setFormData({...formData, shelf_no: e.target.value})}
-                      placeholder="B-01-A"
-                    />
-                  </div>
-                </div>
+  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">
+    Mevcut Stok & Sayım Düzeltme
+  </label>
+
+  <div className="flex items-center justify-between gap-4 relative z-10">
+    {/* Güncel Stok Göstergesi */}
+    <div className="flex flex-col">
+      <span className="text-4xl font-black italic tracking-tighter leading-none">
+        {formData.stock_count}
+      </span>
+      <span className="text-[9px] font-bold text-blue-400 uppercase mt-1">Sistem Kaydı</span>
+    </div>
+
+    {/* +/- Düzeltme Girişi (Widget) */}
+    <div className="flex items-center gap-2 bg-white/10 p-2 rounded-2xl border border-white/10 backdrop-blur-md">
+      <button 
+        type="button"
+        onClick={() => setFormData(prev => ({...prev, adjustment_amount: prev.adjustment_amount - 1}))}
+        className="w-10 h-10 rounded-xl bg-red-500/20 hover:bg-red-500 text-red-500 hover:text-white transition-all font-black text-xl flex items-center justify-center"
+      >
+        -
+      </button>
+      
+      <div className="flex flex-col items-center min-w-[60px]">
+        <input 
+          type="number"
+          className="bg-transparent w-full text-center text-xl font-black outline-none border-b-2 border-blue-500/50 focus:border-blue-500 text-white"
+          value={formData.adjustment_amount}
+          onChange={e => setFormData({...formData, adjustment_amount: Number(e.target.value)})}
+        />
+        <span className="text-[8px] font-black uppercase text-slate-500">Fark</span>
+      </div>
+
+      <button 
+        type="button"
+        onClick={() => setFormData(prev => ({...prev, adjustment_amount: prev.adjustment_amount + 1}))}
+        className="w-10 h-10 rounded-xl bg-emerald-500/20 hover:bg-emerald-500 text-emerald-500 hover:text-white transition-all font-black text-xl flex items-center justify-center"
+      >
+        +
+      </button>
+    </div>
+  </div>
+
+  {/* Alt Bilgi Satırı */}
+  <div className="pt-2 border-t border-white/5 flex justify-between items-center text-[10px] font-bold italic text-slate-400">
+    <span>İŞLEM SONRASI TOPLAM:</span>
+    <span className={formData.adjustment_amount !== 0 ? "text-blue-400 font-black" : ""}>
+      {Number(formData.stock_count) + Number(formData.adjustment_amount)} {formData.unit}
+    </span>
+  </div>
+</div>
+
+{/* KRİTİK LİMİT & BİRİM (Kartın Dışında - Net Okunabilirlik) */}
+<div className="grid grid-cols-2 gap-4">
+  <div className="space-y-1.5 text-left">
+    <label className="text-[9px] font-black text-slate-500 uppercase ml-2 italic">Kritik Limit</label>
+    <div className="relative">
+      <input 
+        type="number"
+        className="w-full border-2 border-slate-100 p-4 rounded-2xl font-black text-red-600 focus:border-red-500 outline-none bg-slate-50 focus:bg-white transition-all shadow-sm"
+        value={formData.critical_limit}
+        onChange={e => setFormData({...formData, critical_limit: Number(e.target.value)})}
+      />
+      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-300 uppercase">MİN</span>
+    </div>
+  </div>
+  
+  <div className="space-y-1.5 text-left">
+    <label className="text-[9px] font-black text-slate-500 uppercase ml-2 italic">Birim</label>
+    <div className="relative">
+      <select 
+        className="w-full border-2 border-slate-100 p-4 rounded-2xl font-black focus:border-blue-600 outline-none bg-slate-50 focus:bg-white appearance-none cursor-pointer shadow-sm"
+        value={formData.unit}
+        onChange={e => setFormData({...formData, unit: e.target.value})}
+      >
+        <option value="Adet">ADET</option>
+        <option value="Set">SET</option>
+        <option value="Metre">METRE</option>
+      </select>
+      <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">▼</div>
+    </div>
+  </div>
+</div>
+
+  <div className="grid grid-cols-2 gap-4 p-5 bg-blue-50/50 rounded-[32px] border border-blue-100 relative">
+    {/* Marj Rozeti */}
+    <div className="absolute -top-3 right-6 bg-emerald-500 text-white text-[9px] font-black px-4 py-1 rounded-full shadow-lg">
+      %{margin} MARJ
+    </div>
+
+
+    <div className="space-y-1.5">
+      <label className="text-[9px] font-black text-blue-600 uppercase ml-2 italic">Alış (Net)</label>
+      <input 
+        type="number" step="0.01"
+        className="w-full border-2 border-white p-3 rounded-xl font-black text-lg focus:border-blue-500 outline-none shadow-sm"
+        value={formData.purchase_price}
+        onChange={e => setFormData({...formData, purchase_price: Number(e.target.value)})}
+      />
+    </div>
+
+    <div className="space-y-1.5">
+      <label className="text-[9px] font-black text-blue-600 uppercase ml-2 italic">Satış (Net)</label>
+      <input 
+        type="number" step="0.01"
+        className="w-full border-2 border-white p-3 rounded-xl font-black text-lg focus:border-blue-500 outline-none shadow-sm"
+        value={formData.sell_price}
+        onChange={e => setFormData({...formData, sell_price: Number(e.target.value)})}
+      />
+      {/* ANLIK BRÜT HESAPLAMA BİLGİSİ */}
+      <div className="px-2 text-[10px] font-bold text-slate-400 italic">
+        Brüt: {(formData.sell_price * (1 + formData.tax_rate / 100)).toLocaleString('tr-TR', {minimumFractionDigits: 2})} TL
+      </div>
+    </div>
+  </div>
+
+  <div className="grid grid-cols-3 gap-3">
+    {/* KDV Giriş Alanı */}
+    <div className="space-y-1.5">
+      <label className="text-[9px] font-black text-slate-500 uppercase ml-2">KDV %</label>
+      <select 
+        className="w-full border-2 border-slate-100 p-4 rounded-2xl font-black text-center focus:border-blue-600 outline-none bg-white appearance-none cursor-pointer"
+        value={formData.tax_rate}
+        onChange={e => setFormData({...formData, tax_rate: Number(e.target.value)})}
+      >
+        <option value={20}>%20</option>
+        <option value={10}>%10</option>
+        <option value={1}>%1</option>
+        <option value={0}>%0</option>
+      </select>
+    </div>
+    {/* Stok ve Kritik alanları orijinal halindeki gibi kalabilir */}
+    {/* ... */}
+  </div>
+</div>
               </div>
 
               {/* Action Button */}

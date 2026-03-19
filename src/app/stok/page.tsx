@@ -1,23 +1,29 @@
 import { supabase } from '@/lib/supabase';
 import { ProductModal } from '@/components/ProductModal';
-import { DeleteProductButton } from '@/components/DeleteProductButton';
 import { SearchInput } from '@/components/SearchInput';
+import { ViewSwitcher } from '@/components/ViewSwitcher'; // YENİ İMPORT
 import Link from 'next/link';
 
 interface StokPageProps {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; view?: string }>;
 }
 
 export default async function StokPage({ searchParams }: StokPageProps) {
   const resolvedParams = await searchParams;
   const query = resolvedParams.q || '';
+  const view = resolvedParams.view || 'list';
 
-  // 1. Veri Çekme (Server-side) - image_url artık çekiliyor
+// 1. Veri Çekme - Kategori, SKU ve Ad sıralaması eklendi
   let sbQuery = supabase.from('products').select('*').eq('is_deleted', false);
   if (query) {
     sbQuery = sbQuery.or(`name.ilike.%${query}%,sku.ilike.%${query}%,oem_code.ilike.%${query}%,category.ilike.%${query}%,brand.ilike.%${query}%`);
   }
-  const { data: rawProducts } = await sbQuery.order('stock_count', { ascending: true });
+
+// 1. Kategori (A-Z), 2. Stok Kodu (A-Z), 3. Ürün Adı (A-Z)
+const { data: rawProducts } = await sbQuery
+  .order('category', { ascending: true })
+  .order('sku', { ascending: true })
+  .order('name', { ascending: true });
   const products = rawProducts || [];
 
   // 2. İstatistik Hesaplamaları
@@ -34,6 +40,8 @@ export default async function StokPage({ searchParams }: StokPageProps) {
       : "0"
   };
 
+
+  
   return (
     <div className="p-4 md:p-8 max-w-[1600px] mx-auto text-slate-900 font-sans min-h-screen bg-[#F8FAFC]">
       
@@ -66,58 +74,54 @@ export default async function StokPage({ searchParams }: StokPageProps) {
       {/* STATS CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-10">
         <StatBox title="Çeşit" value={stats.totalItems} sub="Aktif Ürün" />
-        <StatBox 
-          title="Kritik" 
-          value={stats.criticalItems} 
-          sub="Acil Tedarik" 
-          variant={stats.criticalItems > 0 ? "danger" : "default"} 
-        />
+        <StatBox title="Kritik" value={stats.criticalItems} sub="Acil Tedarik" variant={stats.criticalItems > 0 ? "danger" : "default"} />
         <StatBox title="Toplam Adet" value={stats.totalQuantity.toLocaleString('tr-TR')} sub="Stok Mevcudu" variant="blue" />
-        <StatBox 
-          title="Envanter Değeri" 
-          value={`${stats.totalValue.toLocaleString('tr-TR')} TL`} 
-          sub={`Ort. Kar: %${stats.avgMargin}`} 
-          variant="dark" 
-        />
+        <StatBox title="Envanter Değeri" value={`${stats.totalValue.toLocaleString('tr-TR')} TL`} sub={`Ort. Kar: %${stats.avgMargin}`} variant="dark" />
       </div>
 
-      {/* MAIN TABLE / LIST */}
-      <div className="bg-white border border-slate-200 rounded-[32px] md:rounded-[48px] overflow-hidden shadow-xl shadow-slate-200/50">
+{/* GÖRÜNÜM SEÇİCİ BÖLÜMÜ - DEĞİŞTİ */}
+      <div className="flex justify-between items-center mb-6">
+        <h3 className="text-xs font-black uppercase tracking-[0.3em] text-slate-400 italic">
+          {view === 'grid' ? 'Katalog Görünümü' : 'Liste Görünümü'}
+        </h3>
         
-        {/* DESKTOP TABLE */}
-        <div className="hidden md:block overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-100">
-                <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Parça Bilgisi</th>
-                <th className="p-6 text-center text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Konum</th>
-                <th className="p-6 text-center text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Stok</th>
-                <th className="p-6 text-right text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Fiyatlandırma</th>
-                <th className="p-6 text-center text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Yönetim</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {products.map((p) => (
-                <ProductRow key={p.id} p={p} />
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* MOBILE LIST */}
-        <div className="md:hidden divide-y divide-slate-100">
-          {products.map((p) => (
-            <MobileProductCard key={p.id} p={p} />
-          ))}
-        </div>
-
-        {products.length === 0 && (
-          <div className="py-20 text-center space-y-3">
-             <div className="text-4xl">🔍</div>
-             <p className="text-slate-400 font-black uppercase tracking-widest text-xs italic">Sonuç bulunamadı</p>
-          </div>
-        )}
+        <ViewSwitcher /> {/* HATA VEREN LİNKLERİN YERİNE GELDİ */}
       </div>
+
+      {/* MAIN CONTENT */}
+      {view === 'grid' ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {products.map((p) => <ProductCard key={p.id} p={p} />)}
+        </div>
+      ) : (
+        <div className="bg-white border border-slate-200 rounded-[32px] md:rounded-[48px] overflow-hidden shadow-xl shadow-slate-200/50">
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-100">
+                  <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Parça Bilgisi</th>
+                  <th className="p-6 text-center text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Konum</th>
+                  <th className="p-6 text-center text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Stok</th>
+                  <th className="p-6 text-right text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Fiyatlandırma</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {products.map((p) => <ProductRow key={p.id} p={p} />)}
+              </tbody>
+            </table>
+          </div>
+          <div className="md:hidden divide-y divide-slate-100">
+            {products.map((p) => <MobileProductCard key={p.id} p={p} />)}
+          </div>
+        </div>
+      )}
+
+      {products.length === 0 && (
+        <div className="py-20 text-center space-y-3">
+          <div className="text-4xl">🔍</div>
+          <p className="text-slate-400 font-black uppercase tracking-widest text-xs italic">Sonuç bulunamadı</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -131,7 +135,6 @@ function StatBox({ title, value, sub, variant = "default" }: any) {
     blue: "bg-blue-50 border-blue-100 text-blue-700",
     dark: "bg-slate-900 border-slate-800 text-white shadow-slate-900/20 shadow-xl"
   };
-
   return (
     <div className={`p-6 rounded-[24px] md:rounded-[32px] border-2 transition-all hover:scale-[1.02] ${styles[variant]}`}>
       <span className="text-[10px] font-black uppercase tracking-widest opacity-60 block mb-1">{title}</span>
@@ -143,24 +146,15 @@ function StatBox({ title, value, sub, variant = "default" }: any) {
 
 function ProductRow({ p }: { p: any }) {
   const isCritical = (p.stock_count || 0) <= (p.critical_limit || 5);
-  const margin = p.purchase_price > 0 ? (((p.sell_price - p.purchase_price) / p.purchase_price) * 100).toFixed(0) : 0;
+  const taxRate = p.tax_rate || 20;
+  const sellPriceWithTax = p.sell_price * (1 + taxRate / 100);
 
   return (
-    <tr className={`group transition-all hover:bg-blue-50/30 ${isCritical ? 'bg-red-50/20' : ''}`}>
-      <td className="p-6">
-        <div className="flex items-center gap-4">
-          {/* GÜNCELLENEN GÖRSEL ALANI */}
-          <div className="w-14 h-14 shrink-0 bg-slate-100 rounded-2xl flex items-center justify-center overflow-hidden border border-slate-200 group-hover:border-slate-900 transition-all shadow-sm bg-white">
-            {p.image_url ? (
-              <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" />
-            ) : (
-              <div className="flex flex-col items-center">
-                 <span className="text-[10px] font-black italic text-slate-400 group-hover:text-slate-900">
-                   {p.sku?.substring(0, 2).toUpperCase() || 'PZ'}
-                 </span>
-                 <span className="text-[8px] text-slate-300 font-bold tracking-tighter mt-0.5">FOTO YOK</span>
-              </div>
-            )}
+    <tr className={`group transition-all hover:bg-blue-50/50 border-b border-slate-50 ${isCritical ? 'bg-red-50/10' : ''}`}>
+      <td>
+        <Link href={`/stok/hareketler/${p.id}`} className="flex items-center gap-4 p-6 w-full h-full">
+          <div className="w-14 h-14 shrink-0 bg-white rounded-2xl flex items-center justify-center overflow-hidden border border-slate-200 group-hover:border-blue-500 transition-all shadow-sm">
+            {p.image_url ? <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" /> : <span className="text-[10px] font-black italic text-slate-400">{p.sku?.substring(0, 2)}</span>}
           </div>
           <div>
             <div className="font-black text-slate-900 group-hover:text-blue-600 transition-colors uppercase italic leading-none">{p.name}</div>
@@ -169,91 +163,80 @@ function ProductRow({ p }: { p: any }) {
               <span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">{p.brand}</span>
             </div>
           </div>
-        </div>
+        </Link>
       </td>
-      <td className="p-6 text-center">
-        <span className="inline-block px-3 py-1 rounded-lg border-2 border-slate-100 text-[11px] font-black uppercase text-slate-600 group-hover:border-blue-200">
-          {p.shelf_no || '---'}
-        </span>
-      </td>
-      <td className="p-6 text-center">
-        <div className="flex flex-col items-center gap-1">
-          <span className={`text-xl font-black ${isCritical ? 'text-red-600 animate-pulse' : 'text-slate-900'}`}>
-            {p.stock_count || 0}
-          </span>
-          <div className="w-12 h-1 bg-slate-100 rounded-full overflow-hidden">
-            <div 
-              className={`h-full ${isCritical ? 'bg-red-500' : 'bg-emerald-500'}`} 
-              style={{ width: `${Math.min((p.stock_count / 20) * 100, 100)}%` }}
-            ></div>
-          </div>
-        </div>
-      </td>
-      <td className="p-6 text-right">
-        <div className="text-lg font-black text-slate-900 italic">{p.sell_price?.toLocaleString('tr-TR')} TL</div>
-        <div className="text-[10px] font-bold text-emerald-600 bg-emerald-50 inline-block px-2 py-0.5 rounded-full mt-1">
-          %{margin} Kâr
-        </div>
-      </td>
-      <td className="p-6">
-        <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
-          <ActionButtons p={p} />
-        </div>
+      <td className="p-6 text-center pointer-events-none text-[11px] font-black uppercase text-slate-600 italic">{p.shelf_no || '---'}</td>
+      <td className="p-6 text-center pointer-events-none font-black text-xl italic">{p.stock_count || 0}</td>
+      <td className="p-6 text-right pointer-events-none">
+        <div className="text-lg font-black text-slate-900 italic leading-none">{p.sell_price?.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</div>
+        <div className="text-[10px] font-bold text-blue-600 bg-blue-50 inline-block px-2 py-0.5 rounded-md mt-2 italic">{sellPriceWithTax.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</div>
       </td>
     </tr>
   );
 }
 
-function MobileProductCard({ p }: { p: any }) {
+function ProductCard({ p }: { p: any }) {
   const isCritical = (p.stock_count || 0) <= (p.critical_limit || 5);
+  const taxRate = p.tax_rate || 20;
+  const sellPriceWithTax = p.sell_price * (1 + taxRate / 100);
+
   return (
-    <div className={`p-4 ${isCritical ? 'bg-red-50/30' : ''}`}>
-      <div className="flex justify-between items-start mb-3">
-        <div className="flex gap-3">
-          {/* MOBİL GÖRSEL GÜNCELLEME */}
-          <div className="w-12 h-12 shrink-0 bg-slate-100 border border-slate-200 rounded-xl flex items-center justify-center overflow-hidden bg-white shadow-sm">
-             {p.image_url ? (
-                <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" />
-             ) : (
-                <span className="font-black italic text-[10px] text-slate-400 uppercase">{p.sku?.substring(0, 2)}</span>
-             )}
-          </div>
-          <div>
-            <h4 className="font-black text-sm uppercase italic text-slate-900 leading-tight">{p.name}</h4>
-            <p className="text-[10px] font-bold text-slate-400 mt-0.5">{p.sku} • {p.brand}</p>
-          </div>
+    <Link href={`/stok/hareketler/${p.id}`} className="group bg-white border-2 border-slate-100 rounded-[40px] p-5 transition-all hover:border-blue-600 hover:shadow-2xl hover:shadow-blue-200/50 flex flex-col h-full">
+      <div className="aspect-square w-full bg-slate-50 rounded-[32px] overflow-hidden border border-slate-100 mb-5 relative">
+        {p.image_url ? <img src={p.image_url} alt={p.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" /> : <div className="w-full h-full flex items-center justify-center text-slate-300 font-black italic text-4xl bg-slate-100 uppercase">{p.sku?.substring(0, 2)}</div>}
+        <div className={`absolute top-4 right-4 px-4 py-2 rounded-2xl font-black text-[10px] tracking-widest shadow-lg ${isCritical ? 'bg-red-600 text-white animate-pulse' : 'bg-slate-900 text-white'}`}>{p.stock_count} ADET</div>
+      </div>
+      <div className="flex-1 space-y-2 px-2">
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest bg-blue-50 px-2 py-0.5 rounded-md">{p.sku}</span>
+          <span className="text-[9px] font-bold text-slate-400 uppercase italic">{p.shelf_no || 'RAFSİZ'}</span>
+        </div>
+        <h3 className="font-black text-lg text-slate-900 leading-tight uppercase italic">{p.name}</h3>
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{p.brand}</p>
+      </div>
+      <div className="mt-6 pt-4 border-t border-slate-50 flex items-end justify-between px-2">
+        <div>
+          <span className="block text-[8px] font-black text-slate-400 uppercase">Fiyat</span>
+          <span className="text-xl font-black text-slate-900 italic leading-none">{p.sell_price?.toLocaleString('tr-TR')} TL</span>
         </div>
         <div className="text-right">
-          <div className="text-sm font-black text-slate-900">{p.sell_price?.toLocaleString('tr-TR')} TL</div>
-          <div className="text-[9px] font-bold text-blue-600 uppercase italic">Raf: {p.shelf_no || '-'}</div>
+          <span className="block text-[8px] font-black text-blue-400 uppercase italic">Brüt</span>
+          <span className="text-[11px] font-bold text-blue-600">{sellPriceWithTax.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
         </div>
       </div>
-      <div className="flex items-center justify-between bg-slate-50 p-2 rounded-xl">
-        <div className="flex items-center gap-2">
-          <span className={`font-black ${isCritical ? 'text-red-600' : 'text-slate-900'}`}>Stok: {p.stock_count}</span>
-          {isCritical && <span className="bg-red-600 text-white text-[8px] px-1 rounded animate-bounce">KRİTİK</span>}
-        </div>
-        <div className="flex gap-2">
-          <ActionButtons p={p} small />
-        </div>
-      </div>
-    </div>
+    </Link>
   );
 }
 
-function ActionButtons({ p, small }: { p: any, small?: boolean }) {
-  const size = small ? "w-8 h-8 text-sm" : "w-10 h-10";
+function MobileProductCard({ p }: { p: any }) {
+  const isCritical = (p.stock_count || 0) <= (p.critical_limit || 5);
+  const taxRate = p.tax_rate || 20;
+  const sellPriceWithTax = p.sell_price * (1 + taxRate / 100);
+
   return (
-    <>
-      <ProductModal editData={p} trigger={
-        <button className={`${size} flex items-center justify-center bg-white text-blue-600 rounded-xl border border-slate-100 shadow-sm hover:bg-blue-600 hover:text-white transition-all`}>
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-        </button>
-      } />
-      <Link href={`/stok/hareketler/${p.id}`} className={`${size} flex items-center justify-center bg-white text-emerald-600 rounded-xl border border-slate-100 shadow-sm hover:bg-emerald-600 hover:text-white transition-all`}>
-        📊
-      </Link>
-      <DeleteProductButton id={p.id} name={p.name} />
-    </>
+    <Link href={`/stok/hareketler/${p.id}`} className={`block p-6 active:bg-slate-50 border-b border-slate-100 ${isCritical ? 'bg-red-50/20' : 'bg-white'}`}>
+      <div className="flex justify-between items-start mb-4">
+        <div className="flex gap-4">
+          <div className="w-16 h-16 shrink-0 bg-white border border-slate-200 rounded-2xl flex items-center justify-center overflow-hidden">
+             {p.image_url ? <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" /> : <span className="font-black italic text-xs text-slate-400 uppercase">{p.sku?.substring(0, 2)}</span>}
+          </div>
+          <div className="space-y-1">
+            <h4 className="font-black text-base uppercase italic text-slate-900 leading-tight">{p.name}</h4>
+            <p className="text-[10px] font-bold text-slate-400">{p.sku} • {p.brand}</p>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-base font-black text-slate-900 leading-none">{p.sell_price?.toLocaleString('tr-TR')} TL</div>
+          <div className="text-[9px] font-bold text-blue-600 mt-2 italic">{sellPriceWithTax.toLocaleString('tr-TR')} TL (BRÜT)</div>
+        </div>
+      </div>
+      <div className="flex items-center justify-between bg-slate-50/50 p-4 rounded-2xl border border-slate-100 italic">
+          <div className="flex flex-col">
+            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Mevcut Stok</span>
+            <span className={`font-black text-2xl ${isCritical ? 'text-red-600' : 'text-slate-900'}`}>{p.stock_count}</span>
+          </div>
+          <div className="flex items-center gap-2 text-blue-600 font-black text-[10px] uppercase tracking-widest italic">DETAY <span className="text-lg">→</span></div>
+      </div>
+    </Link>
   );
 }
