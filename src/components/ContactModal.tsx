@@ -167,7 +167,7 @@ export function ContactModal({ contact, isOpen, onClose, onSuccess }: ContactMod
                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">Ticari Ünvan</label>
                 <input 
                   className="w-full bg-slate-50 border-2 border-slate-50 rounded-2xl py-4 px-6 focus:border-blue-500 focus:bg-white outline-none transition-all font-black italic text-lg shadow-sm"
-                  placeholder="Memonex Otomotiv Ltd. Şti."
+                  placeholder="Memonex Tasarım ve Üretim"
                   value={formData.name}
                   onChange={(e) => setFormData({...formData, name: e.target.value})}
                 />

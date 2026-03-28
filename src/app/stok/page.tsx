@@ -55,7 +55,7 @@ const { data: rawProducts } = await sbQuery
             </h1>
           </div>
           <p className="text-slate-500 text-sm font-medium italic ml-5">
-            Memonex Otomotiv • <span className="text-slate-900 font-bold px-2 bg-slate-200/50 rounded">Isparta Merkez</span>
+            Memonex ERP Systems • <span className="text-slate-900 font-bold px-2 bg-slate-200/50 rounded">Isparta Merkez</span>
           </p>
         </div>
         
